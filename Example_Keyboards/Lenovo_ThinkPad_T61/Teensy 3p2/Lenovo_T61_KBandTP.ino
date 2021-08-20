@@ -23,23 +23,31 @@
 // Rev 1.1 - Dec 2, 2018 - Replaced ps/2 trackpoint code from playground arduino with my own code
 // Rev 1.2 - July 16, 2019 - Check if slots are full when detecting a key press
 // Rev 1.3 - 18 August, 2021 - using interrupt driven trackpoint code Ben Kazemi
-//
+// Rev 1.4 - 18 August, 2021 - added sleep,prev,next,play,stop,numlock to media matrix. Moved \ and gui
+// Rev 1.5 - 18 August, 2021 - added conditioning to TP reset
+// Rev 1.6 - 19 August, 2021 - removed -Fn, SYNC, Num lock, Scroll lock IOs, moved Caps lock to pin 13
+//                             added Fn functionality 
+
+/**
+  pin 23 was -Fn
+  pin 27 was SYNC
+  pin 28 was caps lock led
+  pin 29 was num lock led
+  pin 30 was scroll lock
+*/
 #include "trackpoint.h"
 
+//#define MODIFIERKEY_FN 0x8f   // give Fn key a HID code
 // Trackpoint signals
 #define TP_DATA 18   // ps/2 data to trackpoint
 #define TP_CLK 19    // ps/2 clock to trackpoint
 #define TP_RESET 0   // active high trackpoint reset at power up
-// Keyboard LEDs
-#define CAPS_LED 28   // Wire these 3 I/O's to the anode side of LED's 
-#define NUM_LED 29    // Wire the cathode side thru a dropping resistor
-#define SCRL_LED 30   // to ground.
-#define BLINK_LED 13  // The LED on the Teensy is programmed to blink 
+// Keyboard LEDs  jlj
+#define CAPS_LED 13  // The LED on the Teensy is programmed to blink 
 // Keyboard Fn key (aka HOTKEY)
 #define HOTKEY 14       // Fn key plus side
-#define HOTKEY_RTN 23   // Fn key minus side (always driven low in this routine)
-// sync signal for measuring scan frequency
-#define SYNC 27
+
+
 // Set the keyboard row & column size
 const byte rows_max = 16; // sets the number of rows in the matrix
 const byte cols_max = 8; // sets the number of columns in the matrix
@@ -54,14 +62,14 @@ TrackPoint trackpoint(TP_CLK, TP_DATA, TP_RESET);
 //
 int normal[rows_max][cols_max] = {
   {KEY_TILDE, KEY_1, KEY_Q, KEY_TAB, KEY_A, KEY_ESC, KEY_Z, 0},
-  {KEY_F1, KEY_2, KEY_W, KEY_CAPS_LOCK, KEY_S, 0, KEY_X, 0},
+  {KEY_F1, KEY_2, KEY_W, KEY_CAPS_LOCK, KEY_S, KEY_BACKSLASH, KEY_X, 0}, //moved backslash here
   {KEY_F2, KEY_3, KEY_E, KEY_F3, KEY_D, KEY_F4, KEY_C, 0},
   {KEY_5, KEY_4, KEY_R, KEY_T, KEY_F, KEY_G, KEY_V, KEY_B},
   {KEY_6, KEY_7, KEY_U, KEY_Y, KEY_J, KEY_H, KEY_M, KEY_N},
   {KEY_EQUAL, KEY_8, KEY_I, KEY_RIGHT_BRACE, KEY_K, KEY_F6, KEY_COMMA, 0},
   {KEY_F8, KEY_9, KEY_O, KEY_F7, KEY_L, 0, KEY_PERIOD, 0},
   {KEY_MINUS, KEY_0, KEY_P, KEY_LEFT_BRACE, KEY_SEMICOLON, KEY_QUOTE, 0, KEY_SLASH},
-  {KEY_F9, KEY_F10, 0, KEY_BACKSPACE, KEY_BACKSLASH, KEY_F5, KEY_ENTER, KEY_SPACE},
+  {KEY_F9, KEY_F10, 0, KEY_BACKSPACE, 0, KEY_F5, KEY_ENTER, KEY_SPACE},
   {KEY_INSERT, KEY_F12, 0, 0, 0, 0, 0, KEY_RIGHT},
   {KEY_DELETE, KEY_F11, 0, 0, 0, 0, 0, KEY_DOWN},
   {KEY_PAGE_UP, KEY_PAGE_DOWN, 0, 0, KEY_MENU, 0, 0, 0},
@@ -82,9 +90,9 @@ int modifier[rows_max][cols_max] = {
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, MODIFIERKEY_GUI, 0, 0, 0, 0}, //moved GUI here
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, MODIFIERKEY_GUI, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, MODIFIERKEY_LEFT_ALT, 0, MODIFIERKEY_RIGHT_ALT},
   {0, 0, 0, MODIFIERKEY_LEFT_SHIFT, 0, 0, MODIFIERKEY_RIGHT_SHIFT, 0},
@@ -95,18 +103,18 @@ int modifier[rows_max][cols_max] = {
 int media[rows_max][cols_max] = {
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, KEY_SYSTEM_SLEEP, 0, 0}, //added sleep at Fn-F4 position
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, 0, 0, KEY_MEDIA_NEXT_TRACK}, //added next-track at Fn-Right position
+  {0, 0, KEY_MEDIA_VOLUME_INC, KEY_MEDIA_VOLUME_DEC, KEY_MEDIA_MUTE, 0, 0, KEY_MEDIA_PLAY_PAUSE}, //added play-pause at Fn-Down
   {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, KEY_MEDIA_VOLUME_INC, KEY_MEDIA_VOLUME_DEC, KEY_MEDIA_MUTE, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0},
-  {0, 0, 0, 0, 0, 0, 0, 0},
+  {0, 0, 0, 0, 0, KEY_MEDIA_STOP, 0, KEY_MEDIA_PREV_TRACK}, //added prev-track at Fn-Left position. Stop at Fn-Up position.
+  {0, 0, KEY_NUM_LOCK, 0, 0, 0, 0, 0}, //added num-lock at Fn-Scroll lock position
   {0, 0, 0, 0, 0, 0, 0, 0},
   {0, 0, 0, 0, 0, 0, 0, 0}
 };
@@ -326,7 +334,7 @@ void setup() {
 
   // ************trackpoint setup
   trackpoint.reset();
-  trackpoint.setSensitivityFactor(150);
+  trackpoint.setSensitivityFactor(170);
   trackpoint.enable();
 
   attachInterrupt(digitalPinToInterrupt(TP_CLK), clockInterrupt, FALLING);
@@ -338,13 +346,8 @@ void setup() {
   for (int b = 0; b < rows_max; b++) {  // loop thru all row pins
     go_z(Row_IO[b]); // set each row pin as a floating output
   }
-  //
-  go_0(HOTKEY_RTN); // Always drive the Hotkey return side low
-  go_pu(HOTKEY);    // Pull up the Hotkey plus side for reading
-  //
-  pinMode(BLINK_LED, OUTPUT); // I/O 13 drives the LED on the Teensy
-  pinMode(SYNC, OUTPUT); // I/O 27 drives a scope for frequency measurement
 
+  go_pu(HOTKEY);    // Pull up the Hotkey plus side for reading
 }
 //
 // *******declare and initialize trackpoint variables
@@ -360,7 +363,7 @@ boolean sync_sig = LOW; // sync pulse to measure scan frequency
 //
 void loop() {
   // *************Keyboard Main**************
-  // Read the Fn key (aka Hotkey) which is not part of the key matrix
+  //  // Read the Fn key (aka Hotkey) which is not part of the key matrix
   if (!digitalRead(HOTKEY)) {
     Fn_pressed = LOW; // Fn key is pressed (active low)
   }
@@ -378,43 +381,52 @@ void loop() {
     go_0(Row_IO[x]); // Activate Row (send it low)
     delayMicroseconds(10); // give the row time to go low and settle out
     for (int y = 0; y < cols_max; y++) {   // loop thru the columns
-      // **********Modifier keys
+      // **********Modifier keys including the Fn special case
       if (modifier[x][y] != 0) {  // check if modifier key exists at this location in the array (a non-zero value)
         if (!digitalRead(Col_IO[y]) && (old_key[x][y])) {  // Read column to see if key is low (pressed) and was previously not pressed
-          load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
-          send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
-          old_key[x][y] = LOW; // Save state of key as "pressed"
+          if (modifier[x][y] != Fn_pressed) {   // Exclude Fn modifier key
+            load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
+            send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
+            old_key[x][y] = LOW; // Save state of key as "pressed"
+          }
+          else {
+            Fn_pressed = LOW; // Fn status variable is active low
+            old_key[x][y] = LOW; // old_key state is "pressed" (active low)
+          }
         }
         else if (digitalRead(Col_IO[y]) && (!old_key[x][y])) {  //check if key is not pressed and was previously pressed
-          clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
-          send_mod(); // function sends all mod's over usb including the one that just released
-          old_key[x][y] = HIGH; // Save state of key as "not pressed"
+          if (modifier[x][y] != Fn_pressed) { // Exclude Fn modifier key
+            clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
+            send_mod(); // function sends all mod's over usb including the one that just released
+            old_key[x][y] = HIGH; // Save state of key as "not pressed"
+          }
+          else {
+            Fn_pressed = HIGH; // Fn is no longer active
+            old_key[x][y] = HIGH; // old_key state is "not pressed"
+          }
         }
       }
       // ***********end of modifier section
-      //
-      // ***********Normal keys section
-      else if (normal[x][y] != 0) {  // check if normal key exists at this location in the array (a non-zero value)
+
+      // ***********Normal keys section and media keys in this section
+      else if ((normal[x][y] != 0) || (media[x][y] != 0)) {  // check if normal or media key exists at this location in the array
         if (!digitalRead(Col_IO[y]) && (old_key[x][y]) && (!slots_full)) { // check if key pressed and not previously pressed and slots not full
           old_key[x][y] = LOW; // Save state of key as "pressed"
-          if ((normal[x][y] == KEY_SCROLL_LOCK) && (!Fn_pressed)) { // check for special case of Num Lock Key
-            load_slot(KEY_NUM_LOCK); // update first available slot with Num Lock instead of Scroll Lock
-            send_normals(); // send all slots over USB including the Num Lock Key that just got pressed
-          }
-          else {
+          if (Fn_pressed) {  // Fn_pressed is active low so it is not pressed and normal key needs to be sent
             load_slot(normal[x][y]); //update first available slot with normal key name
             send_normals(); // send all slots over USB including the key that just got pressed
+          }
+          else if (media[x][y] != 0) { // Fn is pressed so send media if a key exists in the matrix
+            Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC
+            delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+            Keyboard.release(media[x][y]); // send media key release
           }
         }
         else if (digitalRead(Col_IO[y]) && (!old_key[x][y])) { //check if key is not pressed, but was previously pressed
           old_key[x][y] = HIGH; // Save state of key as "not pressed"
-          if ((normal[x][y] == KEY_SCROLL_LOCK) && (!Fn_pressed)) { // check for special case of Num Lock Key
-            clear_slot(KEY_NUM_LOCK); // clear the slot that contains Num Lock
-            send_normals(); // send all slots over USB including the Num Lock key
-          }
-          else {
+          if (Fn_pressed) {  // Fn is not pressed
             clear_slot(normal[x][y]); //clear the slot that contains the normal key name
-            send_normals(); // send all slots over USB including the key that was just released
+            send_normals(); // send all slots over USB including the key that was just released 
           }
         }
       }
@@ -463,36 +475,12 @@ void loop() {
   // Turn on or off the LEDs for Num Lock, Caps Lock, and Scroll Lock based on bit 0, 1, and 2 from the keyboard_leds
   // variable controlled by the USB host computer
   //
-  if (keyboard_leds & 1) {  // mask off all bits but D0 and test if set
-    go_1(NUM_LED); // turn on the Num Lock LED
-  }
-  else {
-    go_0(NUM_LED); // turn off the Num Lock LED
-  }
-  //
-  //
-  if (keyboard_leds & 1 << 1) { // mask off all bits but D1 and test if set
-    go_1(CAPS_LED); // turn on the Caps Lock LED
-  }
-  else {
-    go_0(CAPS_LED); // turn off the Caps Lock LED
-  }
-  //
-  //
-  if (keyboard_leds & 1 << 2) { // mask off all bits but D2 and test if set
-    go_1(SCRL_LED); // turn on the Scroll Lock LED
-  }
-  else {
-    go_0(SCRL_LED); // turn off the Scroll Lock LED
-  }
 
-  //
-  // Provide a sync pulse to measure the scan frequency
-  //
-  sync_sig = !sync_sig; // toggle the sync signal
-  digitalWrite(SYNC, sync_sig);
-  //
+  if (keyboard_leds & 1 << 1) { // mask off all bits but D1 and test if set
+    go_0(CAPS_LED); // turn on the Caps Lock LED
+  }
+  else {
+    go_1(CAPS_LED); // turn off the Caps Lock LED
+  }
   // ****************End of main loop
-  //
-//  delay(24); // this kills the interrupt driven tp routine, if needed, make it non blocking
 }
