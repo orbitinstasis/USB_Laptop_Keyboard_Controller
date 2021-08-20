@@ -26,18 +26,24 @@
 // Rev 1.4 - 18 August, 2021 - added sleep,prev,next,play,stop,numlock to media matrix. Moved \ and gui
 // Rev 1.5 - 18 August, 2021 - added conditioning to TP reset
 // Rev 1.6 - 19 August, 2021 - removed -Fn, SYNC, Num lock, Scroll lock IOs, moved Caps lock to pin 13
-//                             added Fn functionality 
+//                             added Fn functionality
 
 /**
   pin 23 was -Fn
-  pin 27 was SYNC
+  pin 27 was SYNC is now FPC 2
   pin 28 was caps lock led
-  pin 29 was num lock led
+  pin 29 was num lock led is now existing 26 (FPC 6)
   pin 30 was scroll lock
 */
+#include "Adafruit_BluefruitLE_UART.h"
+#include "Adafruit_BLE.h"
 #include "trackpoint.h"
-
+#define FACTORYRESET_ENABLE         0
+#define MINIMUM_FIRMWARE_VERSION    "0.6.6"
 //#define MODIFIERKEY_FN 0x8f   // give Fn key a HID code
+#define BLUEFRUIT_HWSERIAL_NAME      Serial2
+#define BUFSIZE                        128   // Size of the read buffer for incoming data
+#define VERBOSE_MODE                   true  // If set to 'true' enables debug output
 // Trackpoint signals
 #define TP_DATA 18   // ps/2 data to trackpoint
 #define TP_CLK 19    // ps/2 clock to trackpoint
@@ -46,8 +52,11 @@
 #define CAPS_LED 13  // The LED on the Teensy is programmed to blink 
 // Keyboard Fn key (aka HOTKEY)
 #define HOTKEY 14       // Fn key plus side
+#define TX 31
+#define RX 26
+#define BAUD 9600
 
-
+Adafruit_BluefruitLE_UART ble(BLUEFRUIT_HWSERIAL_NAME, -1);
 // Set the keyboard row & column size
 const byte rows_max = 16; // sets the number of rows in the matrix
 const byte cols_max = 8; // sets the number of columns in the matrix
@@ -55,7 +64,11 @@ const byte cols_max = 8; // sets the number of columns in the matrix
 static const char buttonStates[] = { MOUSE_LEFT, MOUSE_RIGHT, MOUSE_MIDDLE };
 
 TrackPoint trackpoint(TP_CLK, TP_DATA, TP_RESET);
-
+// A small helper
+void error(const __FlashStringHelper*err) {
+  Serial.println(err);
+  while (1);
+}
 //
 // Load the normal key matrix with the Teensyduino key names described at www.pjrc.com/teensy/td_keyboard.html
 // A zero indicates no normal key at that location.
@@ -142,8 +155,8 @@ boolean old_key[rows_max][cols_max] = {
 // Define the Teensy 3.2 I/O numbers
 //
 // Row FPC pin # 22,18,14,10,02,04,08,12,06,20,16,24,28,32,26,30
-// Teensy I/O  # 20,33,24,25,31,32,07,06,26,04,05,03,02,01,21,22
-int Row_IO[rows_max] = {20, 33, 24, 25, 31, 32, 7, 6, 26, 4, 5, 3, 2, 1, 21, 22}; // Teensy 3.2 I/O numbers for rows
+// Teensy I/O  # 20,33,24,25,27,32,07,06,29,04,05,03,02,01,21,22
+int Row_IO[rows_max] = {20, 33, 24, 25, 27, 32, 7, 6, 29, 4, 5, 3, 2, 1, 21, 22}; // Teensy 3.2 I/O numbers for rows
 //
 // Column FPC pin # 05,13,09,07,11,03,15,17
 // Teensy I/O     # 16,10,12,17,11,15,09,08
@@ -332,6 +345,64 @@ void send_normals() {
 //************************************Setup*******************************************
 void setup() {
 
+  BLUEFRUIT_HWSERIAL_NAME.setTX(TX);
+  BLUEFRUIT_HWSERIAL_NAME.setRX(RX);
+  BLUEFRUIT_HWSERIAL_NAME.attachCts(23);
+  BLUEFRUIT_HWSERIAL_NAME.begin(BAUD);
+  Serial.begin(BAUD);
+  ble.print("AT+BAUDRATE=");
+  ble.println(BAUD);
+  Serial.println(F("Adafruit Bluefruit HID Mouse Example"));
+  Serial.println(F("---------------------------------------"));
+
+  /* Initialise the module */
+  Serial.print(F("Initialising the Bluefruit LE module: "));
+
+  if ( !ble.begin(VERBOSE_MODE) )
+  {
+    error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
+  }
+
+
+  if ( FACTORYRESET_ENABLE )
+  {
+    /* Perform a factory reset to make sure everything is in a known state */
+    Serial.println(F("Performing a factory reset: "));
+    if ( ! ble.factoryReset() ) {
+      error(F("Couldn't factory reset"));
+    }
+  }
+
+
+  /* Disable command echo from Bluefruit */
+  ble.echo(false);
+
+  Serial.println("Requesting Bluefruit info:");
+  /* Print Bluefruit information */
+  ble.info();
+
+  // This demo only available for firmware from 0.6.6
+  if ( !ble.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
+  {
+    error(F("This sketch requires firmware version " MINIMUM_FIRMWARE_VERSION " or higher!"));
+  }
+
+
+
+  /* Enable HID Service (including Mouse) */
+  Serial.println(F("Enable HID Service (including Mouse): "));
+  if (! ble.sendCommandCheckOK(F( "AT+BleHIDEn=On"  ))) {
+    error(F("Failed to enable HID (firmware >=0.6.6?)"));
+  }
+
+  /* Add or remove service requires a reset */
+  Serial.println(F("Performing a SW reset (service changes require a reset): "));
+  if (! ble.reset() ) {
+    error(F("Could not reset??"));
+  }
+
+  Serial.println();
+
   // ************trackpoint setup
   trackpoint.reset();
   trackpoint.setSensitivityFactor(170);
@@ -362,6 +433,8 @@ boolean sync_sig = LOW; // sync pulse to measure scan frequency
 //*********************************Main Loop*******************************************
 //
 void loop() {
+
+
   // *************Keyboard Main**************
   //  // Read the Fn key (aka Hotkey) which is not part of the key matrix
   if (!digitalRead(HOTKEY)) {
@@ -426,7 +499,7 @@ void loop() {
           old_key[x][y] = HIGH; // Save state of key as "not pressed"
           if (Fn_pressed) {  // Fn is not pressed
             clear_slot(normal[x][y]); //clear the slot that contains the normal key name
-            send_normals(); // send all slots over USB including the key that was just released 
+            send_normals(); // send all slots over USB including the key that was just released
           }
         }
       }
@@ -467,7 +540,23 @@ void loop() {
         Mouse.release(buttonStates[i]);
       }
     }
-    Mouse.move(report.x, -report.y);
+    //    Mouse.move(report.x, -report.y);
+
+    char _x [10];
+    char _y [10];
+    itoa(report.x, _x, 10);
+    itoa(-report.y, _y, 10);
+    ble.print(F("AT+BleHidMouseMove="));
+    ble.print(_x);
+    ble.print(",") ;
+    ble.println(_y) ;
+//    if ( ble.waitForOK() )
+//    {
+//      Serial.println( F("OK!") );
+//    }
+    //    ble.flush();
+    // delayMicroseconds(250);
+
   }
   // **************************************End of trackpoint routine***********************************
   //
