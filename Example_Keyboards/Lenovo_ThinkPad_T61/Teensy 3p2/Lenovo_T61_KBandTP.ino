@@ -27,6 +27,7 @@
 // Rev 1.5 - 18 August, 2021 - added conditioning to TP reset
 // Rev 1.6 - 19 August, 2021 - removed -Fn, SYNC, Num lock, Scroll lock IOs, moved Caps lock to pin 13
 //                             added Fn functionality
+// Rev 2.0 - 21 August, 2021 - added bluetooth support over UART (need HW factory RST on repeat flashes)
 
 /**
   pin 23 was -Fn
@@ -54,7 +55,7 @@
 #define HOTKEY 14       // Fn key plus side
 #define TX 31
 #define RX 26
-#define BAUD 9600
+#define BAUD 460800
 
 Adafruit_BluefruitLE_UART ble(BLUEFRUIT_HWSERIAL_NAME, -1);
 // Set the keyboard row & column size
@@ -344,14 +345,11 @@ void send_normals() {
 //
 //************************************Setup*******************************************
 void setup() {
-
+  Serial.begin(BAUD);
   BLUEFRUIT_HWSERIAL_NAME.setTX(TX);
   BLUEFRUIT_HWSERIAL_NAME.setRX(RX);
   BLUEFRUIT_HWSERIAL_NAME.attachCts(23);
-  BLUEFRUIT_HWSERIAL_NAME.begin(BAUD);
-  Serial.begin(BAUD);
-  ble.print("AT+BAUDRATE=");
-  ble.println(BAUD);
+
   Serial.println(F("Adafruit Bluefruit HID Mouse Example"));
   Serial.println(F("---------------------------------------"));
 
@@ -363,6 +361,17 @@ void setup() {
     error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
   }
 
+  ble.println("AT+UARTFLOW");  ble.waitForOK();
+  ble.println("AT+UARTFLOW=on");  ble.waitForOK();
+  ble.println("AT+UARTFLOW");  ble.waitForOK();
+  ble.println("AT+BAUDRATE");  ble.waitForOK();
+  ble.print("AT+BAUDRATE=");
+  ble.println(BAUD);  ble.waitForOK();
+  ble.println("AT+BAUDRATE");  ble.waitForOK();
+
+  //  delay(50);
+  BLUEFRUIT_HWSERIAL_NAME.begin(BAUD);
+  //  delay(50);
 
   if ( FACTORYRESET_ENABLE )
   {
@@ -381,6 +390,8 @@ void setup() {
   /* Print Bluefruit information */
   ble.info();
 
+  ble.println("AT+BAUDRATE");  ble.waitForOK();
+  ble.println("AT+UARTFLOW");  ble.waitForOK();
   // This demo only available for firmware from 0.6.6
   if ( !ble.isVersionAtLeast(MINIMUM_FIRMWARE_VERSION) )
   {
@@ -457,26 +468,26 @@ void loop() {
       // **********Modifier keys including the Fn special case
       if (modifier[x][y] != 0) {  // check if modifier key exists at this location in the array (a non-zero value)
         if (!digitalRead(Col_IO[y]) && (old_key[x][y])) {  // Read column to see if key is low (pressed) and was previously not pressed
-          if (modifier[x][y] != Fn_pressed) {   // Exclude Fn modifier key
-            load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
-            send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
-            old_key[x][y] = LOW; // Save state of key as "pressed"
-          }
-          else {
-            Fn_pressed = LOW; // Fn status variable is active low
-            old_key[x][y] = LOW; // old_key state is "pressed" (active low)
-          }
+          //          if (modifier[x][y] != Fn_pressed) {   // Exclude Fn modifier key
+          load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
+          send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
+          old_key[x][y] = LOW; // Save state of key as "pressed"
+          //          }
+          //          else {
+          //            Fn_pressed = LOW; // Fn status variable is active low
+          //            old_key[x][y] = LOW; // old_key state is "pressed" (active low)
+          //          }
         }
         else if (digitalRead(Col_IO[y]) && (!old_key[x][y])) {  //check if key is not pressed and was previously pressed
-          if (modifier[x][y] != Fn_pressed) { // Exclude Fn modifier key
-            clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
-            send_mod(); // function sends all mod's over usb including the one that just released
-            old_key[x][y] = HIGH; // Save state of key as "not pressed"
-          }
-          else {
-            Fn_pressed = HIGH; // Fn is no longer active
-            old_key[x][y] = HIGH; // old_key state is "not pressed"
-          }
+          //          if (modifier[x][y] != Fn_pressed) { // Exclude Fn modifier key
+          clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
+          send_mod(); // function sends all mod's over usb including the one that just released
+          old_key[x][y] = HIGH; // Save state of key as "not pressed"
+          //          }
+          //          else {
+          //            Fn_pressed = HIGH; // Fn is no longer active
+          //            old_key[x][y] = HIGH; // old_key state is "not pressed"
+          //          }
         }
       }
       // ***********end of modifier section
@@ -544,16 +555,17 @@ void loop() {
 
     char _x [10];
     char _y [10];
-    itoa(report.x, _x, 10);
-    itoa(-report.y, _y, 10);
+    #define MULTIPLIER 2
+    itoa(report.x * MULTIPLIER, _x, 10);
+    itoa(-report.y * MULTIPLIER, _y, 10);
     ble.print(F("AT+BleHidMouseMove="));
     ble.print(_x);
     ble.print(",") ;
     ble.println(_y) ;
-//    if ( ble.waitForOK() )
-//    {
-//      Serial.println( F("OK!") );
-//    }
+    //    if ( ble.waitForOK() )
+    //    {
+    //      Serial.println( F("OK!") );
+    //    }
     //    ble.flush();
     // delayMicroseconds(250);
 
