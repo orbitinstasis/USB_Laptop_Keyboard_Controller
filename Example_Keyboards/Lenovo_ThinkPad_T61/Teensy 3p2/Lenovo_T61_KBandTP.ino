@@ -33,6 +33,9 @@
 
   NOTE: You need to change the baud rate in Adafruit_BluefruitLE_UART::begin to the same baud rate here
 
+  TODO: ADD SOME DELAY WHEN NOT KEYING / CONSIDER AN IDLE MODE
+  fix UK keyboard layout keys (shift numbers , # etc) 
+
   pin 23 was -Fn
   pin 26 moved to 6
   pin 27 was SYNC is now FPC 2
@@ -45,8 +48,8 @@
 #include "Adafruit_BLE.h"
 #include "trackpoint.h"
 
-#define USB_EN                          true
-#define BLE_EN                          false
+#define USB_EN                          false
+#define BLE_EN                          !USB_EN
 
 //BLE defines
 #define AT_COMMAND_MODE                 false
@@ -54,7 +57,7 @@
 #define MINIMUM_FIRMWARE_VERSION        "0.6.6"
 #define BLUEFRUIT_HWSERIAL_NAME         Serial2
 #define BUFSIZE                         128   // Size of the read buffer for incoming data
-#define VERBOSE_MODE                    true  // If set to 'true' enables debug output
+#define VERBOSE_MODE                    false  // If set to 'true' enables debug output
 // Trackpoint signals
 #define TP_DATA           18   // ps/2 data to trackpoint
 #define TP_CLK            19    // ps/2 clock to trackpoint
