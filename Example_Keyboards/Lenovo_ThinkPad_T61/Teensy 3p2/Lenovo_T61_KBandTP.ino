@@ -30,7 +30,8 @@
                               refactored code by moving all definitions, macros and functions to helper.ino
                               added ATcommand mode from USB serial connection with the define set to true
                               finalised ugly BLE code with removed scroll lock, media keys and modifiers
-
+                              fixed UK localisation on usb mode and ble mode
+                              
   NOTE: You need to change the baud rate in Adafruit_BluefruitLE_UART::begin to the same baud rate here
 
   TODO: ADD SOME DELAY WHEN NOT KEYING / CONSIDER AN IDLE MODE
@@ -42,6 +43,9 @@
   pin 28 was caps lock led
   pin 29 was num lock led is now existing 26 (FPC 6)
   pin 30 was scroll lock, is now what used to be 31 (FPC 2)
+
+
+  
 */
 
 #include "Adafruit_BluefruitLE_UART.h"
@@ -91,13 +95,13 @@ boolean sync_sig = LOW; // sync pulse to measure scan frequency
 // A zero indicates no normal key at that location.
 int normal[rows_max][cols_max] = {
   {KEY_TILDE, KEY_1, KEY_Q, KEY_TAB, KEY_A, KEY_ESC, KEY_Z, 0},
-  {KEY_F1, KEY_2, KEY_W, KEY_CAPS_LOCK, KEY_S, KEY_BACKSLASH, KEY_X, 0}, //moved backslash here
+  {KEY_F1, KEY_2, KEY_W, KEY_CAPS_LOCK, KEY_S, 0x64, KEY_X, 0}, //key for backslash, existing didn't work
   {KEY_F2, KEY_3, KEY_E, KEY_F3, KEY_D, KEY_F4, KEY_C, 0},
   {KEY_5, KEY_4, KEY_R, KEY_T, KEY_F, KEY_G, KEY_V, KEY_B},
   {KEY_6, KEY_7, KEY_U, KEY_Y, KEY_J, KEY_H, KEY_M, KEY_N},
   {KEY_EQUAL, KEY_8, KEY_I, KEY_RIGHT_BRACE, KEY_K, KEY_F6, KEY_COMMA, 0},
   {KEY_F8, KEY_9, KEY_O, KEY_F7, KEY_L, 0, KEY_PERIOD, 0},
-  {KEY_MINUS, KEY_0, KEY_P, KEY_LEFT_BRACE, KEY_SEMICOLON, KEY_QUOTE, 0, KEY_SLASH},
+  {KEY_MINUS, KEY_0, KEY_P, KEY_LEFT_BRACE, KEY_SEMICOLON, KEY_QUOTE, 0x32, KEY_SLASH}, // KEY_HASHTILDE for uk layout
   {KEY_F9, KEY_F10, 0, KEY_BACKSPACE, 0, KEY_F5, KEY_ENTER, KEY_SPACE},
   {KEY_INSERT, KEY_F12, 0, 0, 0, 0, 0, KEY_RIGHT},
   {KEY_DELETE, KEY_F11, 0, 0, 0, 0, 0, KEY_DOWN},
@@ -109,7 +113,7 @@ int normal[rows_max][cols_max] = {
 };
 String normalBLE[rows_max][cols_max] = {
   {"35", "1E", "14", "2B", "04", "29", "1D", "00"},
-  {"3A", "1F", "1A", "39", "16", "32", "1B", "00"}, //moved backslash here
+  {"3A", "1F", "1A", "39", "16", "64", "1B", "00"}, //moved backslash here
   {"3B", "20", "08", "3C", "07", "3D", "06", "00"},
   {"22", "21", "15", "17", "09", "0A", "19", "05"},
   {"23", "24", "18", "1C", "0D", "0B", "10", "11"},
