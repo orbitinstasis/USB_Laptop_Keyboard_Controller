@@ -30,7 +30,7 @@
                               refactored code by moving all definitions, macros and functions to helper.ino
                               added ATcommand mode from USB serial connection with the define set to true
                               finalised ugly BLE code with removed scroll lock, media keys and modifiers
-                              
+
   NOTE: You need to change the baud rate in Adafruit_BluefruitLE_UART::begin to the same baud rate here
 
   pin 23 was -Fn
@@ -45,8 +45,8 @@
 #include "Adafruit_BLE.h"
 #include "trackpoint.h"
 
-#define USB_EN                          false
-#define BLE_EN                          true
+#define USB_EN                          true
+#define BLE_EN                          false
 
 //BLE defines
 #define AT_COMMAND_MODE                 false
@@ -436,9 +436,17 @@ void loop() {
               }
               if (USB_EN)
               {
-                Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC
-                delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
-                Keyboard.release(media[x][y]); // send media key release
+                if (media[x][y] == KEY_MEDIA_VOLUME_INC || media[x][y] == KEY_MEDIA_VOLUME_DEC || media[x][y] == KEY_MEDIA_MUTE )
+                {
+                  Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC
+                  delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+                  Keyboard.release(media[x][y]); // send media key release
+                }
+                else
+                {
+                  load_slot(normal[x][y]); //update first available slot with normal key name
+                  send_normals(); // send all slots over USB including the key that just got pressed
+                }
               }
             }
             else if (media[x][y] != 0 || mediaBLE[x][y] != "00")  // Fn is pressed so send media if a key exists in the matrix
@@ -452,14 +460,13 @@ void loop() {
                 }
                 else
                 {
-                  Serial.println(mediaBLE[x][y]);
                   send_control_HID(mediaBLE[x][y]);
                 }
               }
               if (USB_EN)
               {
                 Keyboard.press(media[x][y]); // media key is sent using keyboard press function per PJRC
-                delay(500); // delay 5 milliseconds before releasing to make sure it gets sent over USB
+                delay(5); // delay 5 milliseconds before releasing to make sure it gets sent over USB
                 Keyboard.release(media[x][y]); // send media key release
               }
             }
