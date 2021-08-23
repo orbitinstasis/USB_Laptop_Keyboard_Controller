@@ -31,11 +31,12 @@
                               added ATcommand mode from USB serial connection with the define set to true
                               finalised ugly BLE code with removed scroll lock, media keys and modifiers
                               fixed UK localisation on usb mode and ble mode
-                              
+                              flipped fn and left ctrl
+
   NOTE: You need to change the baud rate in Adafruit_BluefruitLE_UART::begin to the same baud rate here
 
   TODO: ADD SOME DELAY WHEN NOT KEYING / CONSIDER AN IDLE MODE
-  fix UK keyboard layout keys (shift numbers , # etc) 
+
 
   pin 23 was -Fn
   pin 26 moved to 6
@@ -45,14 +46,14 @@
   pin 30 was scroll lock, is now what used to be 31 (FPC 2)
 
 
-  
+
 */
 
 #include "Adafruit_BluefruitLE_UART.h"
 #include "Adafruit_BLE.h"
 #include "trackpoint.h"
 
-#define USB_EN                          false
+#define USB_EN                          false   // you can have both enabled at the same time!
 #define BLE_EN                          !USB_EN
 
 //BLE defines
@@ -71,10 +72,8 @@
 #define TX                31
 #define RX                26
 #define BAUD              460800
-#define MOUSE_MULTIPLIER  2
+#define MOUSE_MULTIPLIER  1
 
-
-// BLE variables
 Adafruit_BluefruitLE_UART ble(BLUEFRUIT_HWSERIAL_NAME, -1);
 // Set the keyboard row & column size
 const byte rows_max = 16; // sets the number of rows in the matrix
@@ -123,7 +122,7 @@ String normalBLE[rows_max][cols_max] = {
   {"42", "43", "00", "2A", "00", "3E", "28", "2C"},
   {"49", "45", "00", "00", "00", "00", "00", "4F"},
   {"4C", "44", "80", "81", "7F", "00", "00", "51"},  //added media without fn
-  {"4B", "4E", "00", "00", "00", "00", "00", "00"},
+  {"4B", "4E", "00", "00", "76", "00", "00", "00"},
   {"4A", "4D", "00", "00", "00", "52", "48", "50"},
   {"00", "46", "53", "00", "00", "00", "00", "00"},
   {"00", "00", "00", "00", "00", "00", "00", "00"},
@@ -264,6 +263,9 @@ int mod_alt_l = 0;
 int mod_alt_r = 0;
 int mod_gui = 0;
 
+boolean haveLoaded = false;
+boolean haveUNloaded = false;
+
 //
 //************************************Setup*******************************************
 void setup() {
@@ -363,18 +365,28 @@ void loop() {
   }
   else
   {
-
     // *************Keyboard Main**************
-    //  // Read the Fn key (aka Hotkey) which is not part of the key matrix
-    if (!digitalRead(HOTKEY))
+    if (!digitalRead(HOTKEY)) // swap fn to ctrl
     {
-      Fn_pressed = LOW; // Fn key is pressed (active low)
+      if (!haveLoaded) // is first press?
+      {
+        load_modBLE(modifierBLE[15][0]);
+        sendKeysBLE();
+        haveLoaded = true;
+        haveUNloaded = false;
+      }
     }
     else
     {
-      Fn_pressed = HIGH; // Fn key is not pressed
+      if (!haveUNloaded)
+      {
+        clear_modBLE(modifierBLE[15][0]);
+        sendKeysBLE();
+        haveUNloaded =  true;
+        haveLoaded = false;
+      }
     }
-    //
+
     // Scan keyboard matrix with an outer loop that drives each row low and an inner loop that reads every column (with pull ups).
     // The routine looks at each key's present state (by reading the column input pin) and also the previous state from the last scan
     // The status of a key that was just pressed or just released is sent over USB and the state is saved in the old_key matrix.
@@ -394,27 +406,54 @@ void loop() {
           { // Read column to see if key is low (pressed) and was previously not pressed
             if (BLE_EN)
             {
-              load_modBLE(modifierBLE[x][y]);
-              sendKeysBLE();
+              if (((x == 15) && (y == 0))) // read the physical left ctrl as fn
+              {
+                Fn_pressed = LOW; //Save state of key as "pressed"
+              }
+              else
+              {
+                load_modBLE(modifierBLE[x][y]);
+                sendKeysBLE();
+              }
             }
             if (USB_EN)
-            {
-              load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
-              send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
+            { if (((x == 15) && (y == 0))) // read the physical left ctrl as fn
+              {
+                Fn_pressed = LOW; //Save state of key as "pressed"
+              }
+              else
+              {
+                load_mod(modifier[x][y]); // function reads which modifier key is pressed and loads it into the appropriate mod_... variable
+                send_mod(); // function sends the state of all modifier keys over usb including the one that just got pressed
+              }
             }
-            old_key[x][y] = LOW; // Save state of key as "pressed"
+            old_key[x][y] = LOW; //  Fn key is not pressed
           }
           else if (digitalRead(Col_IO[y]) && (!old_key[x][y]))
           { //check if key is not pressed and was previously pressed
             if (BLE_EN)
             {
-              clear_modBLE(modifierBLE[x][y]);
-              sendKeysBLE();
+              if (((x == 15) && (y == 0)))
+              {
+                Fn_pressed = HIGH; // Fn key is not pressed (active low)
+              }
+              else
+              {
+                clear_modBLE(modifierBLE[x][y]);
+                sendKeysBLE();
+              }
             }
             if (USB_EN)
             {
-              clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
-              send_mod(); // function sends all mod's over usb including the one that just released
+              if (((x == 15) && (y == 0)))
+              {
+                Fn_pressed = HIGH; // Fn key is not pressed (active low)
+              }
+              else
+              {
+                clear_mod(modifier[x][y]); // function reads which modifier key was released and loads 0 into the appropriate mod_... variable
+                send_mod(); // function sends all mod's over usb including the one that just released
+              }
             }
             old_key[x][y] = HIGH; // Save state of key as "not pressed"
           }
